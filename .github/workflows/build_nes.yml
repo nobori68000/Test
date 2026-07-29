@@ -11,16 +11,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Compile asm6
+      - name: Install Official asm6
         run: |
-          gcc -O2 -o asm6 asm6.c
+          # GitHub公式アーカイブから直接取得してコンパイル（Git認証不要・404なし）
+          curl -sSL https://codeload.github.com/freewing-gh/asm6/tar.gz/refs/heads/master | tar -xz
+          gcc -O2 -o asm6 asm6-master/asm6.c
           sudo mv asm6 /usr/local/bin/
 
-      - name: Save Generated Assembly Code
+      - name: Save Generated Assembly Code safely
         run: |
-          cat << 'EOF' > game.asm
-          ${{ github.event.client_payload.asm_code }}
-          EOF
+          # jqを使用してJSONからアセンブリコードを安全抽出（フリーズ完全防止）
+          jq -r '.client_payload.asm_code' "$GITHUB_EVENT_PATH" > game.asm
 
       - name: Compile NES ROM with asm6
         run: |
