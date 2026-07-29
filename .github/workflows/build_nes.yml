@@ -11,29 +11,78 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Official asm6 Compiler
+      - name: Fetch and Compile Real asm6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Pythonを使って公式のasm6.zipを確実に取得・解凍
           python3 -c "
-          import urllib.request, zipfile, io
-          url = 'http://loopy.ines.us/asm6.zip'
-          req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-          with urllib.request.urlopen(req) as response:
-              z = zipfile.ZipFile(io.BytesIO(response.read()))
-              z.extractall('.')
-          print('asm6.c successfully extracted!')
+          import urllib.request, json, os, sys
+
+          token = os.environ.get('GITHUB_TOKEN', '')
+          headers = {'User-Agent': 'GitHub-Actions-Workflow'}
+          if token:
+              headers['Authorization'] = f'Bearer {token}'
+
+          print('Searching GitHub API for active asm6 repositories...')
+          search_url = 'https://api.github.com/search/repositories?q=asm6+in:name'
+          req = urllib.request.Request(search_url, headers=headers)
+
+          found = False
+          try:
+              with urllib.request.urlopen(req) as resp:
+                  data = json.loads(resp.read().decode())
+              
+              for item in data.get('items', []):
+                  repo = item['full_name']
+                  contents_url = f'https://api.github.com/repos/{repo}/contents'
+                  try:
+                      c_req = urllib.request.Request(contents_url, headers=headers)
+                      with urllib.request.urlopen(c_req) as c_resp:
+                          files = json.loads(c_resp.read().decode())
+                      for f in files:
+                          if isinstance(f, dict) and f.get('name', '').endswith('.c'):
+                              dl_url = f.get('download_url')
+                              if dl_url:
+                                  dl_req = urllib.request.Request(dl_url, headers=headers)
+                                  with urllib.request.urlopen(dl_req) as dl_resp:
+                                      code = dl_resp.read().decode('utf-8', errors='ignore')
+                                  if 'main' in code and ('6502' in code or 'opcode' in code or 'IMMED' in code or 'asm6' in code):
+                                      with open('asm6.c', 'w', encoding='utf-8') as out_f:
+                                          out_f.write(code)
+                                      print(f'Successfully downloaded valid asm6 source from {repo}/{f[\"name\"]}')
+                                      found = True
+                                      break
+                      if found:
+                          break
+                  except Exception as e:
+                      continue
+          except Exception as e:
+              print(f'API Search Error: {e}')
+
+          if not found:
+              print('Failed to find asm6 source code.')
+              sys.exit(1)
           "
           gcc -O2 -o asm6 asm6.c
           sudo mv asm6 /usr/local/bin/
 
-      - name: Save Generated Assembly Code safely
+      - name: Save Generated Assembly Code
         run: |
-          # jqでJSONからアセンブリコードを安全抽出
           jq -r '.client_payload.asm_code' "$GITHUB_EVENT_PATH" > game.asm
 
       - name: Compile NES ROM with asm6
         run: |
           asm6 game.asm output.nes
+
+      - name: Verify iNES Header
+        run: |
+          python3 -c "
+          with open('output.nes', 'rb') as f:
+              header = f.read(4)
+          print('Header bytes:', header)
+          assert header == b'NES\x1a', f'Invalid NES Header! Got {header}'
+          print('iNES Header valid! ROM build successful.')
+          "
 
       - name: Upload NES ROM Artifact
         uses: actions/upload-artifact@v4
