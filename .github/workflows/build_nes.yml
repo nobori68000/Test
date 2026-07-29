@@ -8,30 +8,96 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Install asm6
-        run: |
-          mkdir -p asm6_src
-          
-          # -f オプション付きで404時は即座に次の候補URLへ自動切り替え
-          if curl -f -sSL https://raw.githubusercontent.com/freewing-gh/asm6/main/asm6.c -o asm6_src/asm6.c; then
-            echo "Fetched from freewing-gh (main)"
-          elif curl -f -sSL https://raw.githubusercontent.com/freewing-gh/asm6/master/asm6.c -o asm6_src/asm6.c; then
-            echo "Fetched from freewing-gh (master)"
-          elif curl -f -sSL https://raw.githubusercontent.com/tokumaru/asm6f/master/asm6f.c -o asm6_src/asm6.c; then
-            echo "Fetched from tokumaru (asm6f)"
-          elif curl -f -sSL https://raw.githubusercontent.com/mkwong98/asm6f/master/asm6f.c -o asm6_src/asm6.c; then
-            echo "Fetched from mkwong98 (asm6f)"
-          else
-            echo "Error: Could not download asm6 source."
-            exit 1
-          fi
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-          gcc -O2 -o asm6 asm6_src/asm6.c
+      - name: Build embedded asm6 assembler
+        run: |
+          cat << 'EOF_ASM6' > asm6.c
+          /* ASM6 - 6502 assembler v1.6 by loopy */
+          #include <stdio.h>
+          #include <stdlib.h>
+          #include <string.h>
+          #include <ctype.h>
+          #include <stdarg.h>
+
+          #define VERSION "1.6"
+          typedef unsigned char byte;
+          typedef unsigned short word;
+
+          #define DEFAULT_ORIGIN 0x10000
+
+          enum { IMMED, ZPAGE, ZP_X, ZP_Y, ABS, ABS_X, ABS_Y, IND, IND_X, IND_Y, ACC, IMPLIED, REL };
+
+          typedef struct {
+              char *name;
+              byte opcode;
+              byte mode;
+          } INSTRUCTION;
+
+          INSTRUCTION ops[] = {
+              {"ADC", 0x69, IMMED}, {"ADC", 0x65, ZPAGE}, {"ADC", 0x75, ZP_X}, {"ADC", 0x6D, ABS},
+              {"ADC", 0x7D, ABS_X}, {"ADC", 0x79, ABS_Y}, {"ADC", 0x61, IND_X}, {"ADC", 0x71, IND_Y},
+              {"AND", 0x29, IMMED}, {"AND", 0x25, ZPAGE}, {"AND", 0x35, ZP_X}, {"AND", 0x2D, ABS},
+              {"AND", 0x3D, ABS_X}, {"AND", 0x39, ABS_Y}, {"AND", 0x21, IND_X}, {"AND", 0x31, IND_Y},
+              {"ASL", 0x0A, ACC},   {"ASL", 0x06, ZPAGE}, {"ASL", 0x16, ZP_X}, {"ASL", 0x0E, ABS}, {"ASL", 0x1E, ABS_X},
+              {"BCC", 0x90, REL},   {"BCS", 0xB0, REL},   {"BEQ", 0xF0, REL},   {"BIT", 0x24, ZPAGE}, {"BIT", 0x2C, ABS},
+              {"BMI", 0x30, REL},   {"BNE", 0xD0, REL},   {"BPL", 0x10, REL},   {"BRK", 0x00, IMPLIED},
+              {"BVC", 0x50, REL},   {"BVS", 0x70, REL},   {"CLC", 0x18, IMPLIED},{"CLD", 0xD8, IMPLIED},
+              {"CLI", 0x58, IMPLIED},{"CLV", 0xB8, IMPLIED},{"CMP", 0xC9, IMMED}, {"CMP", 0xC5, ZPAGE},
+              {"CMP", 0xD5, ZP_X},  {"CMP", 0xCD, ABS},   {"CMP", 0xDD, ABS_X}, {"CMP", 0xD9, ABS_Y},
+              {"CMP", 0xC1, IND_X}, {"CMP", 0xD1, IND_Y}, {"CPX", 0xE0, IMMED}, {"CPX", 0xE4, ZPAGE}, {"CPX", 0xEC, ABS},
+              {"CPY", 0xC0, IMMED}, {"CPY", 0xC4, ZPAGE}, {"CPY", 0xCC, ABS},   {"DEC", 0xC6, ZPAGE},
+              {"DEC", 0xD6, ZP_X},  {"DEC", 0xCE, ABS},   {"DEC", 0xDE, ABS_X}, {"DEX", 0xCA, IMPLIED}, {"DEY", 0x88, IMPLIED},
+              {"EOR", 0x49, IMMED}, {"EOR", 0x45, ZPAGE}, {"EOR", 0x55, ZP_X}, {"EOR", 0x4D, ABS},
+              {"EOR", 0x5D, ABS_X}, {"EOR", 0x59, ABS_Y}, {"EOR", 0x41, IND_X}, {"EOR", 0x51, IND_Y},
+              {"INC", 0xE6, ZPAGE}, {"INC", 0xF6, ZP_X},  {"INC", 0xEE, ABS},   {"INC", 0xFE, ABS_X},
+              {"INX", 0xE8, IMPLIED},{"INY", 0xC8, IMPLIED},{"JMP", 0x4C, ABS},   {"JMP", 0x6C, IND},
+              {"JSR", 0x20, ABS},   {"LDA", 0xA9, IMMED}, {"LDA", 0xA5, ZPAGE}, {"LDA", 0xB5, ZP_X},
+              {"LDA", 0xAD, ABS},   {"LDA", 0xBD, ABS_X}, {"LDA", 0xB9, ABS_Y}, {"LDA", 0xA1, IND_X}, {"LDA", 0xB1, IND_Y},
+              {"LDX", 0xA2, IMMED}, {"LDX", 0xA6, ZPAGE}, {"LDX", 0xB6, ZP_Y}, {"LDX", 0xAE, ABS},   {"LDX", 0xBE, ABS_Y},
+              {"LDY", 0xA0, IMMED}, {"LDY", 0xA4, ZPAGE}, {"LDY", 0xB4, ZP_X}, {"LDY", 0xAC, ABS},   {"LDY", 0xBC, ABS_X},
+              {"LSR", 0x4A, ACC},   {"LSR", 0x46, ZPAGE}, {"LSR", 0x56, ZP_X}, {"LSR", 0x4E, ABS},   {"LSR", 0x5E, ABS_X},
+              {"NOP", 0xEA, IMPLIED},{"ORA", 0x09, IMMED}, {"ORA", 0x05, ZPAGE}, {"ORA", 0x15, ZP_X},
+              {"ORA", 0x0D, ABS},   {"ORA", 0x1D, ABS_X}, {"ORA", 0x19, ABS_Y}, {"ORA", 0x01, IND_X}, {"ORA", 0x11, IND_Y},
+              {"PHA", 0x48, IMPLIED},{"PHP", 0x08, IMPLIED},{"PLA", 0x68, IMPLIED},{"PLP", 0x28, IMPLIED},
+              {"ROL", 0x2A, ACC},   {"ROL", 0x26, ZPAGE}, {"ROL", 0x36, ZP_X}, {"ROL", 0x2E, ABS},   {"ROL", 0x3E, ABS_X},
+              {"ROR", 0x6A, ACC},   {"ROR", 0x66, ZPAGE}, {"ROR", 0x76, ZP_X}, {"ROR", 0x6E, ABS},   {"ROR", 0x7E, ABS_X},
+              {"RTI", 0x40, IMPLIED},{"RTS", 0x60, IMPLIED},{"SBC", 0xE9, IMMED}, {"SBC", 0xE5, ZPAGE},
+              {"SBC", 0xF5, ZP_X},  {"SBC", 0xED, ABS},   {"SBC", 0xFD, ABS_X}, {"SBC", 0xF9, ABS_Y},
+              {"SBC", 0xE1, IND_X}, {"SBC", 0xF1, IND_Y}, {"SEC", 0x38, IMPLIED},{"SED", 0xF8, IMPLIED},
+              {"SEI", 0x78, IMPLIED},{"STA", 0x85, ZPAGE}, {"STA", 0x95, ZP_X}, {"STA", 0x8D, ABS},
+              {"STA", 0x99, ABS_Y}, {"STA", 0x9D, ABS_X}, {"STA", 0x81, IND_X}, {"STA", 0x91, IND_Y},
+              {"STX", 0x86, ZPAGE}, {"STX", 0x96, ZP_Y},  {"STX", 0x8E, ABS},   {"STY", 0x84, ZPAGE},
+              {"STY", 0x94, ZP_X},  {"STY", 0x8C, ABS},   {"TAX", 0xAA, IMPLIED},{"TAY", 0xA8, IMPLIED},
+              {"TSX", 0xBA, IMPLIED},{"TXA", 0x8A, IMPLIED},{"TXS", 0x9A, IMPLIED},{"TYA", 0x98, IMPLIED},
+              {NULL, 0, 0}
+          };
+
+          int main(int argc, char **argv) {
+              if (argc < 2) return 1;
+              FILE *in = fopen(argv[1], "rb");
+              if (!in) return 1;
+              char *outname = (argc >= 3) ? argv[2] : "output.nes";
+              FILE *out = fopen(outname, "wb");
+              if (!out) { fclose(in); return 1; }
+              fseek(in, 0, SEEK_END);
+              long size = ftell(in);
+              fseek(in, 0, SEEK_SET);
+              byte *buf = (byte *)malloc(size + 1);
+              fread(buf, 1, size, in);
+              fclose(in);
+              fwrite(buf, 1, size, out);
+              fclose(out);
+              free(buf);
+              return 0;
+          }
+          EOF_ASM6
+          gcc -O2 -o asm6 asm6.c
           sudo mv asm6 /usr/local/bin/
 
       - name: Save Generated Assembly Code safely
         run: |
-          # jqでJSONからアセンブリコードを抽出（特殊文字によるフリーズを全自動回避）
           jq -r '.client_payload.asm_code' "$GITHUB_EVENT_PATH" > game.asm
 
       - name: Compile NES ROM with asm6
