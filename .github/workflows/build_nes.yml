@@ -10,25 +10,10 @@ jobs:
     steps:
       - name: Install asm6
         run: |
-          export GIT_TERMINAL_PROMPT=0
-          mkdir -p asm6_build
-          cd asm6_build
-          
-          # 複数のソース元からダウンロードを試行（1つでも成功すればOK）
-          if curl -f -sSL https://raw.githubusercontent.com/3DSage/NES-Game/master/asm6.c -o asm6.c; then
-            echo "Successfully fetched asm6.c from 3DSage"
-            gcc -O2 -o asm6 asm6.c
-          elif curl -f -sSL https://raw.githubusercontent.com/carlosrossi/asm6/master/asm6.c -o asm6.c; then
-            echo "Successfully fetched asm6.c from carlosrossi"
-            gcc -O2 -o asm6 asm6.c
-          elif git clone https://github.com/Ryphecha/asm6.git .; then
-            echo "Successfully cloned Ryphecha/asm6"
-            gcc -O2 -o asm6 asm6.c
-          else
-            echo "Error: Failed to download asm6 source."
-            exit 1
-          fi
-          
+          # asm6開発者（loopy氏）の公式サイトから直接取得
+          curl -sSL http://loopy.ines.us/asm6.zip -o asm6.zip
+          unzip asm6.zip
+          gcc -O2 -o asm6 asm6.c
           sudo mv asm6 /usr/local/bin/
 
       - name: Save Generated Assembly Code
