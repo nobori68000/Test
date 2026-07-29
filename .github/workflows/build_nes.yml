@@ -8,19 +8,30 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Official asm6
+      - name: Install asm6
         run: |
-          # GitHub公式アーカイブから直接取得してコンパイル（Git認証不要・404なし）
-          curl -sSL https://codeload.github.com/freewing-gh/asm6/tar.gz/refs/heads/master | tar -xz
-          gcc -O2 -o asm6 asm6-master/asm6.c
+          mkdir -p asm6_src
+          
+          # -f オプション付きで404時は即座に次の候補URLへ自動切り替え
+          if curl -f -sSL https://raw.githubusercontent.com/freewing-gh/asm6/main/asm6.c -o asm6_src/asm6.c; then
+            echo "Fetched from freewing-gh (main)"
+          elif curl -f -sSL https://raw.githubusercontent.com/freewing-gh/asm6/master/asm6.c -o asm6_src/asm6.c; then
+            echo "Fetched from freewing-gh (master)"
+          elif curl -f -sSL https://raw.githubusercontent.com/tokumaru/asm6f/master/asm6f.c -o asm6_src/asm6.c; then
+            echo "Fetched from tokumaru (asm6f)"
+          elif curl -f -sSL https://raw.githubusercontent.com/mkwong98/asm6f/master/asm6f.c -o asm6_src/asm6.c; then
+            echo "Fetched from mkwong98 (asm6f)"
+          else
+            echo "Error: Could not download asm6 source."
+            exit 1
+          fi
+
+          gcc -O2 -o asm6 asm6_src/asm6.c
           sudo mv asm6 /usr/local/bin/
 
       - name: Save Generated Assembly Code safely
         run: |
-          # jqを使用してJSONからアセンブリコードを安全抽出（フリーズ完全防止）
+          # jqでJSONからアセンブリコードを抽出（特殊文字によるフリーズを全自動回避）
           jq -r '.client_payload.asm_code' "$GITHUB_EVENT_PATH" > game.asm
 
       - name: Compile NES ROM with asm6
