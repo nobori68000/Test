@@ -10,8 +10,9 @@ jobs:
     steps:
       - name: Install asm6
         run: |
-          curl -sL https://raw.githubusercontent.com/sonicsvc/asm6/master/asm6.c -o asm6.c
-          gcc -O2 -o asm6 asm6.c
+          git clone https://github.com/mkwong98/asm6f.git asm6_src
+          cd asm6_src
+          gcc -O2 -o asm6 asm6f.c
           sudo mv asm6 /usr/local/bin/
 
       - name: Save Generated Assembly Code
