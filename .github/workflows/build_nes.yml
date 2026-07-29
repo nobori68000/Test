@@ -8,11 +8,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Install asm6
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Compile asm6
         run: |
-          # asm6開発者（loopy氏）の公式サイトから直接取得
-          curl -sSL http://loopy.ines.us/asm6.zip -o asm6.zip
-          unzip asm6.zip
           gcc -O2 -o asm6 asm6.c
           sudo mv asm6 /usr/local/bin/
 
@@ -22,7 +22,7 @@ jobs:
           ${{ github.event.client_payload.asm_code }}
           EOF
 
-      - name: Compile with asm6
+      - name: Compile NES ROM with asm6
         run: |
           asm6 game.asm output.nes
 
