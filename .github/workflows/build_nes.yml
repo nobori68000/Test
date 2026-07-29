@@ -10,16 +10,15 @@ jobs:
     steps:
       - name: Install asm6
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc make git
-          git clone https://github.com/freewing-gh/asm6.git
-          cd asm6
-          gcc -o asm6 asm6.c
+          curl -sL https://raw.githubusercontent.com/sonicsvc/asm6/master/asm6.c -o asm6.c
+          gcc -O2 -o asm6 asm6.c
           sudo mv asm6 /usr/local/bin/
 
       - name: Save Generated Assembly Code
         run: |
-          echo "${{ github.event.client_payload.asm_code }}" > game.asm
+          cat << 'EOF' > game.asm
+          ${{ github.event.client_payload.asm_code }}
+          EOF
 
       - name: Compile with asm6
         run: |
