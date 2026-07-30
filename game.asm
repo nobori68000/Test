@@ -2,13 +2,21 @@
 
   .org $C000
 
-PAD_DATA    = $00
-POS_X_LO    = $02
-POS_X_HI    = $03
-POS_Y_LO    = $04
-POS_Y_HI    = $05
-SPEED_LO    = $06
-SPEED_HI    = $07
+PAD_DATA      = $00
+PAD_PREV      = $01
+POS_X_LO      = $02
+POS_X_HI      = $03
+POS_Y_LO      = $04
+POS_Y_HI      = $05
+SPEED_LO      = $06
+SPEED_HI      = $07
+PAD_TRIG      = $08
+PLAYER_DIR    = $09
+
+BULLET_ACTIVE = $10
+BULLET_X      = $14
+BULLET_Y      = $18
+BULLET_DIR    = $1C
 
 RESET:
   SEI
@@ -50,6 +58,8 @@ vblank2:
   LDA #$00
   STA POS_X_LO
   STA POS_Y_LO
+  STA PAD_PREV
+  STA PLAYER_DIR
   LDA #120
   STA POS_X_HI
   LDA #112
@@ -63,7 +73,9 @@ vblank2:
 main_loop:
   JSR wait_vblank
   JSR read_controller
+  JSR process_input
   JSR update_player
+  JSR update_bullets
   JSR update_sprites
   JMP main_loop
 
@@ -126,6 +138,86 @@ read_pad_loop:
   BNE read_pad_loop
   RTS
 
+process_input:
+  LDA PAD_DATA
+  EOR PAD_PREV
+  AND PAD_DATA
+  STA PAD_TRIG
+  LDA PAD_DATA
+  STA PAD_PREV
+
+  LDA PAD_TRIG
+  AND #%10000000
+  BEQ pi_done
+  JSR fire_bullet
+pi_done:
+  RTS
+
+fire_bullet:
+  LDX #$00
+find_bullet_slot:
+  LDA BULLET_ACTIVE,x
+  BEQ slot_found
+  INX
+  CPX #$04
+  BNE find_bullet_slot
+  RTS
+
+slot_found:
+  LDA #$01
+  STA BULLET_ACTIVE,x
+  LDA PLAYER_DIR
+  STA BULLET_DIR,x
+
+  CMP #$00
+  BNE not_dir_0
+  CLC
+  LDA POS_X_HI
+  ADC #12
+  STA BULLET_X,x
+  CLC
+  LDA POS_Y_HI
+  ADC #4
+  STA BULLET_Y,x
+  RTS
+
+not_dir_0:
+  CMP #$01
+  BNE not_dir_1
+  SEC
+  LDA POS_X_HI
+  SBC #4
+  STA BULLET_X,x
+  CLC
+  LDA POS_Y_HI
+  ADC #4
+  STA BULLET_Y,x
+  RTS
+
+not_dir_1:
+  CMP #$02
+  BNE not_dir_2
+  CLC
+  LDA POS_X_HI
+  ADC #4
+  STA BULLET_X,x
+  CLC
+  LDA POS_Y_HI
+  ADC #12
+  STA BULLET_Y,x
+  RTS
+
+not_dir_2:
+  CLC
+  LDA POS_X_HI
+  ADC #4
+  STA BULLET_X,x
+  SEC
+  LDA POS_Y_HI
+  SBC #4
+  STA BULLET_Y,x
+  RTS
+
 update_player:
   LDA #$00
   STA SPEED_LO
@@ -148,6 +240,8 @@ no_diagonal:
   LDA PAD_DATA
   AND #%00000001
   BEQ check_left
+  LDA #$00
+  STA PLAYER_DIR
   CLC
   LDA POS_X_LO
   ADC SPEED_LO
@@ -160,6 +254,8 @@ check_left:
   LDA PAD_DATA
   AND #%00000010
   BEQ check_down
+  LDA #$01
+  STA PLAYER_DIR
   SEC
   LDA POS_X_LO
   SBC SPEED_LO
@@ -172,6 +268,8 @@ check_down:
   LDA PAD_DATA
   AND #%00000100
   BEQ check_up
+  LDA #$02
+  STA PLAYER_DIR
   CLC
   LDA POS_Y_LO
   ADC SPEED_LO
@@ -184,6 +282,8 @@ check_up:
   LDA PAD_DATA
   AND #%00001000
   BEQ move_done
+  LDA #$03
+  STA PLAYER_DIR
   SEC
   LDA POS_Y_LO
   SBC SPEED_LO
@@ -193,6 +293,72 @@ check_up:
   STA POS_Y_HI
 
 move_done:
+  RTS
+
+update_bullets:
+  LDX #$00
+b_update_loop:
+  LDA BULLET_ACTIVE,x
+  BNE b_is_active
+  JMP b_next
+b_is_active:
+  LDA BULLET_DIR,x
+  CMP #$00
+  BNE b_not_right
+  CLC
+  LDA BULLET_X,x
+  ADC #$04
+  STA BULLET_X,x
+  JMP b_check_bounds
+
+b_not_right:
+  CMP #$01
+  BNE b_not_left
+  SEC
+  LDA BULLET_X,x
+  SBC #$04
+  STA BULLET_X,x
+  JMP b_check_bounds
+
+b_not_left:
+  CMP #$02
+  BNE b_not_down
+  CLC
+  LDA BULLET_Y,x
+  ADC #$04
+  STA BULLET_Y,x
+  JMP b_check_bounds
+
+b_not_down:
+  SEC
+  LDA BULLET_Y,x
+  SBC #$04
+  STA BULLET_Y,x
+
+b_check_bounds:
+  LDA BULLET_X,x
+  CMP #$04
+  BCC b_deactivate
+  CMP #$F8
+  BCS b_deactivate
+
+  LDA BULLET_Y,x
+  CMP #$04
+  BCC b_deactivate
+  CMP #$F0
+  BCS b_deactivate
+  JMP b_next
+
+b_deactivate:
+  LDA #$00
+  STA BULLET_ACTIVE,x
+
+b_next:
+  INX
+  CPX #$04
+  BEQ b_done
+  JMP b_update_loop
+b_done:
   RTS
 
 update_sprites:
@@ -239,6 +405,32 @@ update_sprites:
   LDA POS_X_HI
   ADC #$08
   STA $020F
+
+  LDX #$00
+  LDY #$10
+draw_bullet_loop:
+  LDA BULLET_ACTIVE,x
+  BEQ hide_bullet
+  LDA BULLET_Y,x
+  STA $0200,y
+  LDA #$01
+  STA $0201,y
+  LDA #$00
+  STA $0202,y
+  LDA BULLET_X,x
+  STA $0203,y
+  JMP next_bullet_draw
+hide_bullet:
+  LDA #$FE
+  STA $0200,y
+next_bullet_draw:
+  INY
+  INY
+  INY
+  INY
+  INX
+  CPX #$04
+  BNE draw_bullet_loop
   RTS
 
 NMI:
