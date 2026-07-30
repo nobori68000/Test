@@ -30,7 +30,7 @@ jobs:
                   repo = item['full_name']
                   try:
                       c_req = urllib.request.Request(f'https://api.github.com/repos/{repo}/contents', headers=headers)
-                      with urllib.request.urlopen(c_req) as c_resp:
+                      with urllib.request.urlopen(c_resp: = urllib.request.urlopen(c_req)):
                           for f in json.loads(c_resp.read().decode()):
                               if isinstance(f, dict) and f.get('name', '').endswith('.c'):
                                   dl_req = urllib.request.Request(f.get('download_url'), headers=headers)
@@ -52,11 +52,16 @@ jobs:
         run: |
           jq -r '.client_payload.asm_code' "$GITHUB_EVENT_PATH" > game.asm
 
-      - name: Perfect Auto-Transform Long Branches
+      - name: Sanitize and Auto-Fix Assembly Code
         run: |
           python3 -c "
           import re
 
+          with open('game.asm', 'r', encoding='utf-8', errors='ignore') as f:
+              lines = f.readlines()
+
+          new_lines = []
+          has_org = False
           branch_map = {
               'BEQ': 'BNE', 'BNE': 'BEQ',
               'BCS': 'BCC', 'BCC': 'BCS',
@@ -64,26 +69,34 @@ jobs:
               'BVS': 'BVC', 'BVC': 'BVS'
           }
 
-          with open('game.asm', 'r', encoding='utf-8', errors='ignore') as f:
-              lines = f.readlines()
+          # 1. ORGディレクティブの有無を確認
+          for line in lines:
+              if re.search(r'^\s*\.org\b', line, re.IGNORECASE):
+                  has_org = True
+                  break
 
-          new_lines = []
+          # 2. ORGがない場合、ヘッダー直後に .org $C000 を補正挿入
+          inserted_org = False
           count = 0
 
           for line in lines:
-              # コメントとコードを分離
+              # コード中で最初に現れる命令・ラベルの直前に .org $C000 を入れる
+              if not has_org and not inserted_org:
+                  if not re.search(r'^\s*(\.|;|\s*$)', line):
+                      new_lines.append('  .org $C000\n')
+                      inserted_org = True
+
+              # 条件分岐命令を安全な JMP 構造へ自動変換
               if ';' in line:
-                  parts = line.split(';', 1)
-                  code_part, comment_part = parts[0], ';' + parts[1]
+                  code_part, comment_part = line.split(';', 1)
+                  comment_part = ';' + comment_part
               else:
                   code_part, comment_part = line, ''
 
-              # データ定義行（.dbなど）はスキップ
               if re.search(r'^\s*\.(db|byte|ascii|asciiz|text|incbin)\b', code_part, re.IGNORECASE):
                   new_lines.append(line)
                   continue
 
-              # 分岐命令を抽出（行のどこにあっても検知）
               m = re.search(r'\b(BEQ|BNE|BCS|BCC|BMI|BPL|BVS|BVC)\b\s+([^\s;]+)', code_part, re.IGNORECASE)
               if m:
                   op = m.group(1).upper()
@@ -93,7 +106,6 @@ jobs:
                   inv_op = branch_map[op]
                   skip_label = f'_auto_skip_{count}'
                   count += 1
-
                   indent = '  ' if not prefix.strip() else ''
 
                   new_lines.append(f'{prefix}{inv_op} {skip_label}{suffix}\n')
@@ -105,7 +117,7 @@ jobs:
           with open('game.asm', 'w', encoding='utf-8') as f:
               f.writelines(new_lines)
 
-          print(f'Transformed {count} branch instructions to absolute jumps.')
+          print('Assembly sanitization complete.')
           "
 
       - name: Compile NES ROM with asm6
