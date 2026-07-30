@@ -59,6 +59,7 @@ vblank2:
   STA POS_X_LO
   STA POS_Y_LO
   STA PAD_PREV
+  LDA #$03
   STA PLAYER_DIR
   LDA #120
   STA POS_X_HI
@@ -166,48 +167,9 @@ find_bullet_slot:
 slot_found:
   LDA #$01
   STA BULLET_ACTIVE,x
-  LDA PLAYER_DIR
+  LDA #$03
   STA BULLET_DIR,x
 
-  CMP #$00
-  BNE not_dir_0
-  CLC
-  LDA POS_X_HI
-  ADC #12
-  STA BULLET_X,x
-  CLC
-  LDA POS_Y_HI
-  ADC #4
-  STA BULLET_Y,x
-  RTS
-
-not_dir_0:
-  CMP #$01
-  BNE not_dir_1
-  SEC
-  LDA POS_X_HI
-  SBC #4
-  STA BULLET_X,x
-  CLC
-  LDA POS_Y_HI
-  ADC #4
-  STA BULLET_Y,x
-  RTS
-
-not_dir_1:
-  CMP #$02
-  BNE not_dir_2
-  CLC
-  LDA POS_X_HI
-  ADC #4
-  STA BULLET_X,x
-  CLC
-  LDA POS_Y_HI
-  ADC #12
-  STA BULLET_Y,x
-  RTS
-
-not_dir_2:
   CLC
   LDA POS_X_HI
   ADC #4
@@ -240,8 +202,6 @@ no_diagonal:
   LDA PAD_DATA
   AND #%00000001
   BEQ check_left
-  LDA #$00
-  STA PLAYER_DIR
   CLC
   LDA POS_X_LO
   ADC SPEED_LO
@@ -254,8 +214,6 @@ check_left:
   LDA PAD_DATA
   AND #%00000010
   BEQ check_down
-  LDA #$01
-  STA PLAYER_DIR
   SEC
   LDA POS_X_LO
   SBC SPEED_LO
@@ -268,8 +226,6 @@ check_down:
   LDA PAD_DATA
   AND #%00000100
   BEQ check_up
-  LDA #$02
-  STA PLAYER_DIR
   CLC
   LDA POS_Y_LO
   ADC SPEED_LO
@@ -282,8 +238,6 @@ check_up:
   LDA PAD_DATA
   AND #%00001000
   BEQ move_done
-  LDA #$03
-  STA PLAYER_DIR
   SEC
   LDA POS_Y_LO
   SBC SPEED_LO
