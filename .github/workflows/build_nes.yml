@@ -4,7 +4,6 @@ on:
   repository_dispatch:
     types: [build-nes]
 
-# 【追加】リポジトリへの保存（書き込み）権限を付与
 permissions:
   contents: write
 
@@ -64,31 +63,38 @@ jobs:
           import re
           with open('game.asm', 'r', encoding='utf-8', errors='ignore') as f:
               lines = f.readlines()
+
           new_lines = []
           has_org = False
+          after_vectors = False
+
           for line in lines:
               if re.search(r'^\s*\.org\b', line, re.IGNORECASE):
                   has_org = True
                   break
+
           inserted_org = False
           for line in lines:
+              # 1. ORGがない場合の補正
               if not has_org and not inserted_org:
                   if not re.search(r'^\s*(\.|;|\s*$)', line):
                       new_lines.append('  .org $C000\n')
                       inserted_org = True
-              new_lines.append(line)
+
+              # 2. ベクタテーブル（.dw NMI, RESET, IRQ）以降の不正な .org / .pad を自動除去
+              if re.search(r'\b(NMI|RESET|IRQ)\b', line, re.IGNORECASE) and '.dw' in line:
+                  after_vectors = True
+                  new_lines.append(line)
+                  continue
+
+              if after_vectors and re.search(r'^\s*\.(org|pad)\b', line, re.IGNORECASE):
+                  new_lines.append('; [AUTO-FIXED] ' + line)
+              else:
+                  new_lines.append(line)
+
           with open('game.asm', 'w', encoding='utf-8') as f:
               f.writelines(new_lines)
           "
-
-      # 【追加】生成されたコードをGitHubに永続保存（コミット＆プッシュ）
-      - name: Commit and Push game.asm
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add game.asm
-          git commit -m "Auto-update game.asm from GAS" || echo "No changes to commit"
-          git push
 
       - name: Compile NES ROM with asm6
         run: |
@@ -109,6 +115,14 @@ jobs:
               data.extend(b'\x00' * (expected_size - len(data)))
               with open('output.nes', 'wb') as f: f.write(data)
           "
+
+      - name: Commit and Push game.asm (Save only on SUCCESS)
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add game.asm
+          git commit -m "Auto-update game.asm (Successful Build)" || echo "No changes to commit"
+          git push
 
       - name: Upload NES ROM Artifact
         uses: actions/upload-artifact@v4
