@@ -2,30 +2,39 @@
 
   .org $C000
 
-PAD_DATA      = $00
-PAD_PREV      = $01
-POS_X_LO      = $02
-POS_X_HI      = $03
-POS_Y_LO      = $04
-POS_Y_HI      = $05
-SPEED_LO      = $06
-SPEED_HI      = $07
-PAD_TRIG      = $08
-PLAYER_DIR    = $09
+PAD_DATA        = $00
+PAD_PREV        = $01
+POS_X_LO        = $02
+POS_X_HI        = $03
+POS_Y_LO        = $04
+POS_Y_HI        = $05
+SPEED_LO        = $06
+SPEED_HI        = $07
+PAD_TRIG        = $08
+PLAYER_DIR      = $09
 
-BULLET_ACTIVE = $10
-BULLET_X      = $14
-BULLET_Y      = $18
-BULLET_DIR    = $1C
+MAIN_ACTIVE     = $10
+MAIN_X          = $14
+MAIN_Y          = $18
 
-ENEMY_ACTIVE  = $20
-ENEMY_X       = $24
-ENEMY_Y       = $28
-ENEMY_TYPE    = $2C
+ENEMY_ACTIVE    = $20
+ENEMY_X         = $24
+ENEMY_Y         = $28
+ENEMY_TYPE      = $2C
 
-SCROLL_Y      = $30
-FRAME_CNT     = $31
-RANDOM_SEED   = $32
+SCROLL_Y        = $30
+FRAME_CNT       = $31
+RANDOM_SEED     = $32
+SUB_WEAPON_TYPE = $33
+BARRIER_ACTIVE  = $34
+ROT_ANGLE       = $35
+
+SUB_ACTIVE      = $40
+SUB_X           = $48
+SUB_Y           = $50
+SUB_VX          = $58
+SUB_VY          = $60
+SUB_FLAGS       = $68
 
 RESET:
   SEI
@@ -71,6 +80,9 @@ vblank2:
   STA PAD_PREV
   STA SCROLL_Y
   STA FRAME_CNT
+  STA SUB_WEAPON_TYPE
+  STA BARRIER_ACTIVE
+  STA ROT_ANGLE
   LDA #$55
   STA RANDOM_SEED
   LDA #$03
@@ -91,6 +103,7 @@ main_loop:
   JSR process_input
   JSR update_player
   JSR update_bullets
+  JSR update_sub_bullets
   JSR update_enemies
   JSR check_collisions
   JSR update_scroll
@@ -195,39 +208,288 @@ process_input:
   LDA PAD_TRIG
   AND #%10000000
   BEQ pi_check_b
-  JSR fire_bullet
+  JSR fire_main_bullet
+
 pi_check_b:
   LDA PAD_TRIG
   AND #%01000000
+  BEQ pi_check_sel
+  JSR fire_sub_bullet
+
+pi_check_sel:
+  LDA PAD_TRIG
+  AND #%00100000
   BEQ pi_done
-  JSR fire_bullet
+  JSR next_sub_weapon
+
 pi_done:
   RTS
 
-fire_bullet:
-  LDX #$00
-find_bullet_slot:
-  LDA BULLET_ACTIVE,x
-  BEQ slot_found
-  INX
-  CPX #$04
-  BNE find_bullet_slot
+next_sub_weapon:
+  INC SUB_WEAPON_TYPE
+  LDA SUB_WEAPON_TYPE
+  CMP #10
+  BCC nsw_done
+  LDA #$00
+  STA SUB_WEAPON_TYPE
+nsw_done:
   RTS
 
-slot_found:
-  LDA #$01
-  STA BULLET_ACTIVE,x
-  LDA PLAYER_DIR
-  STA BULLET_DIR,x
+fire_main_bullet:
+  LDX #$00
+find_main_slot:
+  LDA MAIN_ACTIVE,x
+  BEQ main_slot_found
+  INX
+  CPX #$04
+  BNE find_main_slot
+  RTS
 
+main_slot_found:
+  LDA #$01
+  STA MAIN_ACTIVE,x
   CLC
   LDA POS_X_HI
   ADC #4
-  STA BULLET_X,x
+  STA MAIN_X,x
   SEC
   LDA POS_Y_HI
   SBC #4
-  STA BULLET_Y,x
+  STA MAIN_Y,x
+  RTS
+
+fire_sub_bullet:
+  LDA SUB_WEAPON_TYPE
+  CMP #0
+  BNE fs_not_0
+  JMP fs_type_0
+fs_not_0:
+  CMP #1
+  BNE fs_not_1
+  JMP fs_type_1
+fs_not_1:
+  CMP #2
+  BNE fs_not_2
+  JMP fs_type_2
+fs_not_2:
+  CMP #3
+  BNE fs_not_3
+  JMP fs_type_3
+fs_not_3:
+  CMP #4
+  BNE fs_not_4
+  JMP fs_type_4
+fs_not_4:
+  CMP #5
+  BNE fs_not_5
+  JMP fs_type_5
+fs_not_5:
+  CMP #6
+  BNE fs_not_6
+  JMP fs_type_6
+fs_not_6:
+  CMP #7
+  BNE fs_not_7
+  JMP fs_type_7
+fs_not_7:
+  CMP #8
+  BNE fs_not_8
+  JMP fs_type_8
+fs_not_8:
+  JMP fs_type_9
+
+fs_type_0:
+  JSR spawn_sub_bullet
+  CPX #$FF
+  BEQ fs0_done
+  LDA POS_X_HI
+  STA SUB_X,x
+  LDA POS_Y_HI
+  STA SUB_Y,x
+  LDA #$00
+  STA SUB_VX,x
+  LDA #$FC
+  STA SUB_VY,x
+
+  JSR spawn_sub_bullet
+  CPX #$FF
+  BEQ fs0_done
+  LDA POS_X_HI
+  STA SUB_X,x
+  LDA POS_Y_HI
+  STA SUB_Y,x
+  LDA #$00
+  STA SUB_VX,x
+  LDA #$04
+  STA SUB_VY,x
+
+  JSR spawn_sub_bullet
+  CPX #$FF
+  BEQ fs0_done
+  LDA POS_X_HI
+  STA SUB_X,x
+  LDA POS_Y_HI
+  STA SUB_Y,x
+  LDA #$FC
+  STA SUB_VX,x
+  LDA #$00
+  STA SUB_VY,x
+
+  JSR spawn_sub_bullet
+  CPX #$FF
+  BEQ fs0_done
+  LDA POS_X_HI
+  STA SUB_X,x
+  LDA POS_Y_HI
+  STA SUB_Y,x
+  LDA #$04
+  STA SUB_VX,x
+  LDA #$00
+  STA SUB_VY,x
+fs0_done:
+  RTS
+
+fs_type_1:
+  JSR spawn_sub_bullet
+  CPX #$FF
+  BEQ fs1_done
+  LDA POS_X_HI
+  STA SUB_X,x
+  LDA POS_Y_HI
+  STA SUB_Y,x
+  LDA #$00
+  STA SUB_VX,x
+  LDA #$FA
+  STA SUB_VY,x
+  LDA #$01
+  STA SUB_FLAGS,x
+fs1_done:
+  RTS
+
+fs_type_2:
+  LDA #15
+  STA BARRIER_ACTIVE
+  RTS
+
+fs_type_3:
+  LDX #$00
+fs3_loop:
+  LDA #$00
+  STA ENEMY_ACTIVE,x
+  INX
+  CPX #$04
+  BNE fs3_loop
+  RTS
+
+fs_type_4:
+  JSR spawn_sub_bullet
+  CPX #$FF
+  BEQ fs4_done
+  LDA POS_X_HI
+  STA SUB_X,x
+  LDA POS_Y_HI
+  STA SUB_Y,x
+  LDA #$00
+  STA SUB_VX,x
+  STA SUB_VY,x
+  LDA #$02
+  STA SUB_FLAGS,x
+fs4_done:
+  RTS
+
+fs_type_5:
+  JSR spawn_sub_bullet
+  CPX #$FF
+  BEQ fs5_done
+  LDA POS_X_HI
+  STA SUB_X,x
+  LDA POS_Y_HI
+  STA SUB_Y,x
+  LDA #$00
+  STA SUB_VX,x
+  LDA #$FC
+  STA SUB_VY,x
+  LDA #$04
+  STA SUB_FLAGS,x
+fs5_done:
+  RTS
+
+fs_type_6:
+  JSR spawn_sub_bullet
+  CPX #$FF
+  BEQ fs6_done
+  LDA POS_X_HI
+  STA SUB_X,x
+  LDA POS_Y_HI
+  STA SUB_Y,x
+  LDA #$00
+  STA SUB_VX,x
+  LDA #$FE
+  STA SUB_VY,x
+  LDA #$01
+  STA SUB_FLAGS,x
+fs6_done:
+  RTS
+
+fs_type_7:
+  JSR spawn_sub_bullet
+  CPX #$FF
+  BEQ fs7_done
+  LDA POS_X_HI
+  STA SUB_X,x
+  LDA POS_Y_HI
+  STA SUB_Y,x
+  LDA #$00
+  STA SUB_VX,x
+  LDA #$F6
+  STA SUB_VY,x
+  LDA #$00
+  STA SUB_FLAGS,x
+fs7_done:
+  RTS
+
+fs_type_8:
+  LDX #$00
+fs8_loop:
+  LDA #$00
+  STA ENEMY_ACTIVE,x
+  INX
+  CPX #$04
+  BNE fs8_loop
+  RTS
+
+fs_type_9:
+  JSR spawn_sub_bullet
+  CPX #$FF
+  BEQ fs9_done
+  LDA POS_X_HI
+  STA SUB_X,x
+  LDA POS_Y_HI
+  STA SUB_Y,x
+  LDA #$00
+  STA SUB_VX,x
+  LDA #$F8
+  STA SUB_VY,x
+  LDA #$01
+  STA SUB_FLAGS,x
+fs9_done:
+  RTS
+
+spawn_sub_bullet:
+  LDX #$00
+ssb_loop:
+  LDA SUB_ACTIVE,x
+  BEQ ssb_found
+  INX
+  CPX #$08
+  BNE ssb_loop
+  LDX #$FF
+  RTS
+ssb_found:
+  LDA #$01
+  STA SUB_ACTIVE,x
+  LDA #$00
+  STA SUB_FLAGS,x
   RTS
 
 update_player:
@@ -309,71 +571,121 @@ move_done:
 
 update_bullets:
   LDX #$00
-b_update_loop:
-  LDA BULLET_ACTIVE,x
-  BEQ b_next_jmp
-  JMP b_is_active
-b_next_jmp:
-  JMP b_next
+mb_loop:
+  LDA MAIN_ACTIVE,x
+  BEQ mb_next_jmp
+  JMP mb_is_active
+mb_next_jmp:
+  JMP mb_next
 
-b_is_active:
-  LDA BULLET_DIR,x
-  CMP #$00
-  BNE b_not_right
-  CLC
-  LDA BULLET_X,x
-  ADC #$04
-  STA BULLET_X,x
-  JMP b_check_bounds
-
-b_not_right:
-  CMP #$01
-  BNE b_not_left
+mb_is_active:
   SEC
-  LDA BULLET_X,x
-  SBC #$04
-  STA BULLET_X,x
-  JMP b_check_bounds
+  LDA MAIN_Y,x
+  SBC #$06
+  STA MAIN_Y,x
 
-b_not_left:
-  CMP #$02
-  BNE b_not_down
-  CLC
-  LDA BULLET_Y,x
-  ADC #$04
-  STA BULLET_Y,x
-  JMP b_check_bounds
+  CMP #$08
+  BCS mb_next
 
-b_not_down:
-  SEC
-  LDA BULLET_Y,x
-  SBC #$04
-  STA BULLET_Y,x
-
-b_check_bounds:
-  LDA BULLET_X,x
-  CMP #$04
-  BCC b_deactivate
-  CMP #$F8
-  BCS b_deactivate
-
-  LDA BULLET_Y,x
-  CMP #$04
-  BCC b_deactivate
-  CMP #$F0
-  BCS b_deactivate
-  JMP b_next
-
-b_deactivate:
   LDA #$00
-  STA BULLET_ACTIVE,x
+  STA MAIN_ACTIVE,x
 
-b_next:
+mb_next:
   INX
   CPX #$04
-  BEQ b_done
-  JMP b_update_loop
-b_done:
+  BEQ mb_done
+  JMP mb_loop
+mb_done:
+  RTS
+
+update_sub_bullets:
+  INC ROT_ANGLE
+  LDX #$00
+usb_loop:
+  LDA SUB_ACTIVE,x
+  BEQ usb_next_jmp
+  JMP usb_is_active
+usb_next_jmp:
+  JMP usb_next
+
+usb_is_active:
+  LDA SUB_FLAGS,x
+  CMP #$02
+  BNE usb_not_rot
+  LDA ROT_ANGLE
+  CLC
+  ADC POS_X_HI
+  STA SUB_X,x
+  LDA POS_Y_HI
+  STA SUB_Y,x
+  JMP usb_check_bounds
+
+usb_not_rot:
+  CMP #$04
+  BNE usb_standard_move
+  LDY #$00
+usb_find_enemy:
+  LDA ENEMY_ACTIVE,y
+  BNE usb_home_enemy
+  INY
+  CPY #$04
+  BNE usb_find_enemy
+  JMP usb_standard_move
+
+usb_home_enemy:
+  LDA ENEMY_X,y
+  CMP SUB_X,x
+  BCC usb_home_left
+  INC SUB_X,x
+  JMP usb_home_y
+usb_home_left:
+  DEC SUB_X,x
+
+usb_home_y:
+  LDA ENEMY_Y,y
+  CMP SUB_Y,x
+  BCC usb_home_up
+  INC SUB_Y,x
+  JMP usb_check_bounds
+usb_home_up:
+  DEC SUB_Y,x
+  JMP usb_check_bounds
+
+usb_standard_move:
+  CLC
+  LDA SUB_X,x
+  ADC SUB_VX,x
+  STA SUB_X,x
+
+  CLC
+  LDA SUB_Y,x
+  ADC SUB_VY,x
+  STA SUB_Y,x
+
+usb_check_bounds:
+  LDA SUB_X,x
+  CMP #$04
+  BCC usb_deactivate
+  CMP #$F8
+  BCS usb_deactivate
+
+  LDA SUB_Y,x
+  CMP #$04
+  BCC usb_deactivate
+  CMP #$F0
+  BCS usb_deactivate
+  JMP usb_next
+
+usb_deactivate:
+  LDA #$00
+  STA SUB_ACTIVE,x
+
+usb_next:
+  INX
+  CPX #$08
+  BEQ usb_done
+  JMP usb_loop
+usb_done:
   RTS
 
 update_enemies:
@@ -456,55 +768,149 @@ ue_done:
 
 check_collisions:
   LDX #$00
-cc_b_loop:
-  LDA BULLET_ACTIVE,x
-  BEQ cc_b_next_jmp
-  JMP cc_b_active
+cc_m_loop:
+  LDA MAIN_ACTIVE,x
+  BEQ cc_m_next_jmp
+  JMP cc_m_active
+cc_m_next_jmp:
+  JMP cc_m_next
 
-cc_b_next_jmp:
-  JMP cc_b_next
-
-cc_b_active:
+cc_m_active:
   LDY #$00
-cc_e_loop:
+cc_me_loop:
   LDA ENEMY_ACTIVE,y
-  BEQ cc_e_next
+  BEQ cc_me_next
 
-  LDA BULLET_X,x
+  LDA MAIN_X,x
   SEC
   SBC ENEMY_X,y
-  BCS cc_x_pos
+  BCS cc_mx_pos
   EOR #$FF
   ADC #$01
-cc_x_pos:
+cc_mx_pos:
   CMP #$0C
-  BCS cc_e_next
+  BCS cc_me_next
 
-  LDA BULLET_Y,x
+  LDA MAIN_Y,x
   SEC
   SBC ENEMY_Y,y
-  BCS cc_y_pos
+  BCS cc_my_pos
   EOR #$FF
   ADC #$01
-cc_y_pos:
+cc_my_pos:
   CMP #$0C
-  BCS cc_e_next
+  BCS cc_me_next
 
   LDA #$00
-  STA BULLET_ACTIVE,x
+  STA MAIN_ACTIVE,x
   STA ENEMY_ACTIVE,y
-  JMP cc_b_next
+  JMP cc_m_next
 
-cc_e_next:
+cc_me_next:
   INY
   CPY #$04
-  BNE cc_e_loop
+  BNE cc_me_loop
 
-cc_b_next:
+cc_m_next:
   INX
   CPX #$04
+  BEQ cc_sub_check
+  JMP cc_m_loop
+
+cc_sub_check:
+  LDX #$00
+cc_s_loop:
+  LDA SUB_ACTIVE,x
+  BEQ cc_s_next_jmp
+  JMP cc_s_active
+cc_s_next_jmp:
+  JMP cc_s_next
+
+cc_s_active:
+  LDY #$00
+cc_se_loop:
+  LDA ENEMY_ACTIVE,y
+  BEQ cc_se_next
+
+  LDA SUB_X,x
+  SEC
+  SBC ENEMY_X,y
+  BCS cc_sx_pos
+  EOR #$FF
+  ADC #$01
+cc_sx_pos:
+  CMP #$0C
+  BCS cc_se_next
+
+  LDA SUB_Y,x
+  SEC
+  SBC ENEMY_Y,y
+  BCS cc_sy_pos
+  EOR #$FF
+  ADC #$01
+cc_sy_pos:
+  CMP #$0C
+  BCS cc_se_next
+
+  LDA #$00
+  STA ENEMY_ACTIVE,y
+  LDA SUB_FLAGS,x
+  AND #$01
+  BNE cc_se_next
+
+  LDA #$00
+  STA SUB_ACTIVE,x
+  JMP cc_s_next
+
+cc_se_next:
+  INY
+  CPY #$04
+  BNE cc_se_loop
+
+cc_s_next:
+  INX
+  CPX #$08
+  BEQ cc_barrier_check
+  JMP cc_s_loop
+
+cc_barrier_check:
+  LDA BARRIER_ACTIVE
   BEQ cc_done
-  JMP cc_b_loop
+
+  LDY #$00
+cc_be_loop:
+  LDA ENEMY_ACTIVE,y
+  BEQ cc_be_next
+
+  LDA POS_X_HI
+  SEC
+  SBC ENEMY_X,y
+  BCS cc_bx_pos
+  EOR #$FF
+  ADC #$01
+cc_bx_pos:
+  CMP #$10
+  BCS cc_be_next
+
+  LDA POS_Y_HI
+  SEC
+  SBC ENEMY_Y,y
+  BCS cc_by_pos
+  EOR #$FF
+  ADC #$01
+cc_by_pos:
+  CMP #$10
+  BCS cc_be_next
+
+  LDA #$00
+  STA ENEMY_ACTIVE,y
+  DEC BARRIER_ACTIVE
+
+cc_be_next:
+  INY
+  CPY #$04
+  BNE cc_be_loop
+
 cc_done:
   RTS
 
@@ -563,32 +969,74 @@ update_sprites:
 
   LDX #$00
   LDY #$10
-draw_bullet_loop:
-  LDA BULLET_ACTIVE,x
-  BEQ hide_bullet
-  LDA BULLET_Y,x
+draw_main_loop:
+  LDA MAIN_ACTIVE,x
+  BEQ hide_main
+  LDA MAIN_Y,x
   STA $0200,y
   LDA #$01
   STA $0201,y
   LDA #$00
   STA $0202,y
-  LDA BULLET_X,x
+  LDA MAIN_X,x
   STA $0203,y
-  JMP next_bullet_draw
-hide_bullet:
+  JMP next_main_draw
+hide_main:
   LDA #$FE
   STA $0200,y
-next_bullet_draw:
+next_main_draw:
   INY
   INY
   INY
   INY
   INX
   CPX #$04
-  BNE draw_bullet_loop
+  BNE draw_main_loop
 
   LDX #$00
   LDY #$20
+draw_sub_loop:
+  LDA SUB_ACTIVE,x
+  BEQ hide_sub
+  LDA SUB_Y,x
+  STA $0200,y
+  LDA #$02
+  STA $0201,y
+  LDA #$02
+  STA $0202,y
+  LDA SUB_X,x
+  STA $0203,y
+  JMP next_sub_draw
+hide_sub:
+  LDA #$FE
+  STA $0200,y
+next_sub_draw:
+  INY
+  INY
+  INY
+  INY
+  INX
+  CPX #$08
+  BNE draw_sub_loop
+
+  LDA BARRIER_ACTIVE
+  BEQ hide_barrier
+  LDA POS_Y_HI
+  STA $0240
+  LDA #$01
+  STA $0241
+  LDA #$03
+  STA $0242
+  LDA POS_X_HI
+  STA $0243
+  JMP draw_enemies_start
+hide_barrier:
+  LDA #$FE
+  STA $0240
+
+draw_enemies_start:
+  LDX #$00
+  LDY #$50
 draw_enemy_loop:
   LDA ENEMY_ACTIVE,x
   BEQ hide_enemy
